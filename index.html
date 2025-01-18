@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>자연수와 분수의 나눗셈</title>
+  <!-- MathJax 로드 (LaTeX 수식 렌더링용) -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+    defer
+  ></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: sans-serif;
+      background: #f6f7fb;
+      color: #333;
+    }
+    h1, h2, h3 {
+      text-align: center;
+    }
+    .centered {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .hidden {
+      display: none;
+    }
+    /* 에너지바(시간바) 스타일 */
+    #energyBarContainer {
+      width: 60%;
+      height: 20px;
+      background-color: #ccc;
+      margin: 10px auto;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    #energyBar {
+      height: 100%;
+      width: 100%;
+      background-color: #00c853;
+      transition: width 0.3s linear;
+    }
+    /* 버튼 스타일 */
+    button {
+      margin: 5px;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 1rem;
+      background-color: #4c8bf5;
+      color: #fff;
+    }
+    button:hover {
+      background-color: #2f70e0;
+    }
+    /* 문제, 보기도 깔끔하게 */
+    #quizContainer {
+      width: 90%;
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 15px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    .choiceContainer {
+      margin: 5px 0;
+      background: #f1f1f1;
+      padding: 10px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .choiceContainer:hover {
+      background: #ececec;
+    }
+    #response {
+      white-space: pre-wrap;
+      background: #f1f1f1;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+<script>
+/* 
+  “자연수와 분수의 나눗셈” 퀴즈 게임
+  요구사항에 맞춰 구현
+  - 난이도(최상/상/중/하) 선택
+  - 각 난이도별 초기 제한시간(초) & 문제 당 점수
+  - 에너지바(시간표시), 시간 소진 시 기회 1 감소 후 자동 다음 문제
+  - 3번 틀리면(혹은 기회를 모두 소진하면) 게임 종료
+  - 문제는 무작위로 섞어 출제 (보기 순서는 원문 유지)
+  - MathJax.typeset()으로 수식 렌더링
+  - 게임 끝나면 점수 전송 기능 (saveData 함수)
+*/
+
+/* 
+  31. 아래 함수로 게임 결과를 서버에 전송
+*/
+function saveData(game, name, score, elapsedTime) {
+  const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+
+  const requestData = {
+      game,
+      name,
+      score: parseInt(score, 10),
+      elapsedTime: parseInt(elapsedTime, 10)
+  };
+
+  fetch(FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+          'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestData)
+  })
+  .then(async (response) => {
+    const responseData = await response.json();
+    if (response.ok) {
+      document.getElementById('response').innerText =
+        `성공: ${JSON.stringify(responseData, null, 2)}`;
+    } else {
+      document.getElementById('response').innerText =
+        `오류: ${JSON.stringify(responseData, null, 2)}`;
+    }
+  })
+  .catch(error => {
+    console.error('요청 실패:', error);
+    document.getElementById('response').innerText =
+      `네트워크 오류: ${error.message}`;
+  });
+}
+
+/*************************************
+  모든 문제 데이터(하나도 빠짐없이)
+*************************************/
+
+/*
+  각 문제 객체 구조 예:
+  {
+    condition: "조건(설명)",
+    question: "문제문",
+    choices: [...], // 문자열 배열
+    correct: 정답인덱스(0부터),
+    numOfChoices: 4 또는 3 (보기 개수)
+  }
+*/
+
+const allQuestions = [
+
+  // -------------------------
+  // Set 1 (15는 3/8의 몇 배인지) : 5문제 (4지선다)
+  // -------------------------
+  {
+    condition: "15와 \\(\\dfrac{3}{8}\\)을 이용하여 계산한다.",
+    question: "15는 \\(\\dfrac{3}{8}\\)의 몇 배인지 구하시오?",
+    choices: ["20","30","40","50"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "24와 \\(\\dfrac{3}{4}\\)를 이용하여 계산한다.",
+    question: "24는 \\(\\dfrac{3}{4}\\)의 몇 배인지 구하시오?",
+    choices: ["24","28","32","36"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "10과 \\(\\dfrac{5}{6}\\)을 이용하여 계산한다.",
+    question: "10은 \\(\\dfrac{5}{6}\\)의 몇 배인지 구하시오?",
+    choices: ["6","12","15","18"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "18과 \\(\\dfrac{2}{9}\\)를 이용하여 계산한다.",
+    question: "18은 \\(\\dfrac{2}{9}\\)의 몇 배인지 구하시오?",
+    choices: ["9","27","81","90"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "30과 \\(\\dfrac{3}{10}\\)을 이용하여 계산한다.",
+    question: "30은 \\(\\dfrac{3}{10}\\)의 몇 배인지 구하시오?",
+    choices: ["90","100","120","150"],
+    correct: 1,
+    numOfChoices: 4
+  },
+
+  // -------------------------
+  // Set 2 (가장 큰 수를 가장 작은 수로 나눈 몫) : 5문제 (4지선다)
+  // -------------------------
+  {
+    condition: "\\(\\dfrac{2}{5}, 4, \\dfrac{5}{4}\\) 중 어떤 것이 가장 크고, 어떤 것이 가장 작은지 확인한 뒤 몫을 구한다.",
+    question: "가장 큰 수를 가장 작은 수로 나눈 몫은 무엇입니까?",
+    choices: ["6","8","10","12"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "\\(\\dfrac{1}{2}, 3, \\dfrac{5}{3}\\) 중 어떤 것이 가장 크고, 어떤 것이 가장 작은지 확인한다.",
+    question: "가장 큰 수를 가장 작은 수로 나눈 몫은 무엇입니까?",
+    choices: ["4","5","6","8"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "\\(\\dfrac{1}{4}, \\dfrac{2}{5}, 2\\) 중 어떤 것이 가장 크고, 어떤 것이 가장 작은지 확인한다.",
+    question: "가장 큰 수를 가장 작은 수로 나눈 몫은 무엇입니까?",
+    choices: ["5","6","8","10"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "\\(2, \\dfrac{1}{3}, 4\\) 중 어떤 것이 가장 크고, 어떤 것이 가장 작은지 확인한다.",
+    question: "가장 큰 수를 가장 작은 수로 나눈 몫은 무엇입니까?",
+    choices: ["6","12","15","18"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "\\(\\dfrac{1}{6}, \\dfrac{7}{2}, 2\\) 중 어떤 것이 가장 크고, 어떤 것이 가장 작은지 확인한다.",
+    question: "가장 큰 수를 가장 작은 수로 나눈 몫은 무엇입니까?",
+    choices: ["14","18","21","24"],
+    correct: 2,
+    numOfChoices: 4
+  },
+
+  // -------------------------
+  // Set 3 (나눗셈의 몫이 1보다 큰 것은 어느 것?) : 5문제 (3지선다)
+  // -------------------------
+  {
+    condition: "\\(\\dfrac{1}{6} \\div \\dfrac{3}{5}, \\dfrac{8}{9} \\div \\dfrac{4}{7}, \\dfrac{6}{11} \\div \\dfrac{9}{13}\\) 을 비교한다.",
+    question: "나눗셈의 몫이 1보다 큰 것은 어느 것입니까?",
+    choices: [
+      "(1/6) \\(\\div\\) (3/5)",
+      "(8/9) \\(\\div\\) (4/7)",
+      "(6/11) \\(\\div\\) (9/13)"
+    ],
+    correct: 1,
+    numOfChoices: 3
+  },
+  {
+    condition: "\\(\\dfrac{2}{5} \\div \\dfrac{1}{3}, \\dfrac{4}{7} \\div \\dfrac{3}{4}, \\dfrac{3}{8} \\div \\dfrac{1}{2}\\) 을 비교한다.",
+    question: "나눗셈의 몫이 1보다 큰 것은 어느 것입니까?",
+    choices: [
+      "(2/5) \\(\\div\\) (1/3)",
+      "(4/7) \\(\\div\\) (3/4)",
+      "(3/8) \\(\\div\\) (1/2)"
+    ],
+    correct: 0,
+    numOfChoices: 3
+  },
+  {
+    condition: "\\(\\dfrac{5}{9} \\div \\dfrac{2}{3}, \\dfrac{3}{10} \\div \\dfrac{1}{2}, \\dfrac{3}{4} \\div \\dfrac{2}{5}\\) 을 비교한다.",
+    question: "나눗셈의 몫이 1보다 큰 것은 어느 것입니까?",
+    choices: [
+      "(5/9) \\(\\div\\) (2/3)",
+      "(3/10) \\(\\div\\) (1/2)",
+      "(3/4) \\(\\div\\) (2/5)"
+    ],
+    correct: 2,
+    numOfChoices: 3
+  },
+  {
+    condition: "\\(\\dfrac{1}{2} \\div \\dfrac{2}{3}, \\dfrac{3}{5} \\div \\dfrac{4}{7}, \\dfrac{4}{9} \\div \\dfrac{7}{8}\\) 을 비교한다.",
+    question: "나눗셈의 몫이 1보다 큰 것은 어느 것입니까?",
+    choices: [
+      "(1/2) \\(\\div\\) (2/3)",
+      "(3/5) \\(\\div\\) (4/7)",
+      "(4/9) \\(\\div\\) (7/8)"
+    ],
+    correct: 1,
+    numOfChoices: 3
+  },
+  {
+    condition: "\\(\\dfrac{6}{7} \\div \\dfrac{5}{4}, \\dfrac{3}{8} \\div \\dfrac{5}{6}, \\dfrac{1}{2} \\div \\dfrac{2}{5}\\) 을 비교한다.",
+    question: "나눗셈의 몫이 1보다 큰 것은 어느 것입니까?",
+    choices: [
+      "(6/7) \\(\\div\\) (5/4)",
+      "(3/8) \\(\\div\\) (5/6)",
+      "(1/2) \\(\\div\\) (2/5)"
+    ],
+    correct: 2,
+    numOfChoices: 3
+  },
+
+  // -------------------------
+  // Set 4 (어떤 수에 4/5 곱했더니 ~) : 5문제 (4지선다)
+  // -------------------------
+  {
+    condition: "어떤 수에 \\(\\dfrac{4}{5}\\)를 곱했더니 8이 되었습니다.",
+    question: "어떤 수를 구하시오?",
+    choices: ["8","9","10","16"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "어떤 수에 \\(\\dfrac{2}{3}\\)을 곱했더니 6이 되었습니다.",
+    question: "어떤 수를 구하시오?",
+    choices: ["6","8","9","12"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "어떤 수에 \\(\\dfrac{3}{4}\\)를 곱했더니 15가 되었습니다.",
+    question: "어떤 수를 구하시오?",
+    choices: ["18","20","22","24"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "어떤 수에 \\(\\dfrac{5}{6}\\)을 곱했더니 25가 되었습니다.",
+    question: "어떤 수를 구하시오?",
+    choices: ["24","25","30","40"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "어떤 수에 \\(\\dfrac{2}{5}\\)를 곱했더니 12가 되었습니다.",
+    question: "어떤 수를 구하시오?",
+    choices: ["24","30","32","36"],
+    correct: 1,
+    numOfChoices: 4
+  },
+
+  // -------------------------
+  // Set 5 (경훈이 칼슘 750mg) : 5문제 (4지선다)
+  // -------------------------
+  {
+    condition: "경훈이가 섭취한 칼슘량이 6학년 남학생 하루 필요 칼슘량의 \\(\\dfrac{15}{16}\\)만큼이라고 할 때,",
+    question: "경훈이는 오늘 칼슘 750mg을 섭취했습니다. 이때 6학년 남학생 하루 필요 칼슘량은 몇 mg입니까?",
+    choices: ["700","800","850","900"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "민수가 섭취한 비타민C가 6학년 하루 필요 비타민C량의 \\(\\dfrac{3}{4}\\)라고 할 때,",
+    question: "민수는 오늘 비타민 C 600mg을 섭취했습니다. 이 경우 하루 필요 비타민C량은 몇 mg입니까?",
+    choices: ["700","750","800","900"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "지수가 섭취한 철분이 하루 필요 철분량의 \\(\\dfrac{3}{4}\\)라고 할 때,",
+    question: "지수는 오늘 철분 540mg을 섭취했습니다. 이 경우 하루 필요 철분량은 몇 mg입니까?",
+    choices: ["710","720","740","750"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "세영이가 섭취한 단백질이 하루 필요 단백질량의 \\(\\dfrac{2}{5}\\)라고 할 때,",
+    question: "세영이는 오늘 단백질 400mg을 섭취했습니다. 이 경우 하루 필요 단백질량은 몇 mg입니까?",
+    choices: ["800","900","1000","1200"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "용준이가 섭취한 식이섬유가 하루 필요 식이섬유량의 \\(\\dfrac{7}{9}\\)라고 할 때,",
+    question: "용준이는 오늘 식이섬유 630mg을 섭취했습니다. 이 경우 하루 필요 식이섬유량은 몇 mg입니까?",
+    choices: ["720","780","810","900"],
+    correct: 2,
+    numOfChoices: 4
+  },
+
+  // -------------------------
+  // Set 6 (쌀 20kg -> 5/8kg씩 나누어주기) : 5문제 (4지선다)
+  // -------------------------
+  {
+    condition: "쌀 20kg, 한 사람에게 \\(\\dfrac{5}{8}\\)kg씩 나누어 줄 때",
+    question: "모두 몇 명에게 나누어 줄 수 있는지 구하시오?",
+    choices: ["30","31","32","36"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "설탕 15kg, 한 사람에게 \\(\\dfrac{3}{5}\\)kg씩 나누어 줄 때",
+    question: "모두 몇 명에게 나누어 줄 수 있는지 구하시오?",
+    choices: ["20","25","28","30"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "우유 36L, 한 사람에게 \\(\\dfrac{3}{4}\\)L씩 나누어 줄 때",
+    question: "모두 몇 명에게 나누어 줄 수 있는지 구하시오?",
+    choices: ["36","42","48","50"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "쿠키 40개, 한 사람에게 \\(\\dfrac{2}{5}\\)개씩 나누어 줄 때",
+    question: "모두 몇 명에게 나누어 줄 수 있는지 구하시오?",
+    choices: ["80","100","120","200"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "사과 24개, 한 사람에게 \\(\\dfrac{3}{8}\\)개씩 나누어 줄 때",
+    question: "모두 몇 명에게 나누어 줄 수 있는지 구하시오?",
+    choices: ["24","32","40","64"],
+    correct: 3,
+    numOfChoices: 4
+  },
+
+  // -------------------------
+  // Set 7 (어느 자동차가 10km -> 5/7L 필요) : 5문제 (4지선다)
+  // -------------------------
+  {
+    condition: "어느 자동차가 10km를 가는 데 \\(\\dfrac{5}{7}\\)L 필요",
+    question: "휘발유 1L로 갈 수 있는 거리는 몇 km인지 구하시오?",
+    choices: ["12","14","18","20"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "어느 자동차가 12km를 가는 데 \\(\\dfrac{4}{5}\\)L 필요",
+    question: "휘발유 1L로 갈 수 있는 거리는 몇 km인지 구하시오?",
+    choices: ["10","15","16","20"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "어느 자동차가 15km를 가는 데 \\(\\dfrac{3}{8}\\)L 필요",
+    question: "휘발유 1L로 갈 수 있는 거리는 몇 km인지 구하시오?",
+    choices: ["24","30","35","40"],
+    correct: 3,
+    numOfChoices: 4
+  },
+  {
+    condition: "어느 자동차가 12km를 가는 데 \\(\\dfrac{3}{5}\\)L 필요",
+    question: "휘발유 1L로 갈 수 있는 거리는 몇 km인지 구하시오?",
+    choices: ["15","18","20","22"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "어느 자동차가 8km를 가는 데 \\(\\dfrac{4}{9}\\)L 필요",
+    question: "휘발유 1L로 갈 수 있는 거리는 몇 km인지 구하시오?",
+    choices: ["16","18","20","24"],
+    correct: 1,
+    numOfChoices: 4
+  },
+
+  // -------------------------
+  // Set 8 ("4 ÷ 2/9" 문제) : 10문제 (4지선다)
+  // -------------------------
+  {
+    condition: "다음을 계산: \\(4 \\div \\dfrac{2}{9}\\)",
+    question: "계산 결과를 구하시오.",
+    choices: ["12","16","18","20"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "다음을 계산: \\(5 \\div \\dfrac{1}{2}\\)",
+    question: "계산 결과를 구하시오.",
+    choices: ["2","10","8","12"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "다음을 계산: \\(6 \\div \\dfrac{3}{4}\\)",
+    question: "계산 결과를 구하시오.",
+    choices: ["7","8","9","10"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "다음을 계산: \\(12 \\div \\dfrac{3}{2}\\)",
+    question: "계산 결과를 구하시오.",
+    choices: ["8","9","16","18"],
+    correct: 0,
+    numOfChoices: 4
+  },
+  {
+    condition: "다음을 계산: \\(9 \\div \\dfrac{1}{4}\\)",
+    question: "계산 결과를 구하시오.",
+    choices: ["36","24","48","16"],
+    correct: 0,
+    numOfChoices: 4
+  },
+  {
+    condition: "다음을 계산: \\(7 \\div \\dfrac{1}{3}\\)",
+    question: "계산 결과를 구하시오.",
+    choices: ["10","21","28","16"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "다음을 계산: \\(10 \\div \\dfrac{5}{8}\\)",
+    question: "계산 결과를 구하시오.",
+    choices: ["12","14","16","20"],
+    correct: 2,
+    numOfChoices: 4
+  },
+  {
+    condition: "다음을 계산: \\(15 \\div \\dfrac{3}{4}\\)",
+    question: "계산 결과를 구하시오.",
+    choices: ["18","20","24","25"],
+    correct: 1,
+    numOfChoices: 4
+  },
+  {
+    condition: "다음을 계산: \\(16 \\div \\dfrac{2}{5}\\)",
+    question: "계산 결과를 구하시오.",
+    choices: ["20","30","32","40"],
+    correct: 3,
+    numOfChoices: 4
+  },
+  {
+    condition: "다음을 계산: \\(9 \\div \\dfrac{3}{5}\\)",
+    question: "계산 결과를 구하시오.",
+    choices: ["12","15","18","21"],
+    correct: 1,
+    numOfChoices: 4
+  }
+];
+
+/******************************************
+  전역 변수들
+******************************************/
+let playerName = "";
+let currentDifficulty = "";
+let score = 0;
+let totalTime = 0; // 전체 경과 시간(초)
+let lives = 3; // 남은 기회
+let questionIndex = 0; // 현재 문제 index
+let currentTimer = null; // setInterval용
+let timeLeftEach = 0; // 난이도별 남은시간(문제당)
+let isGameOver = false;
+
+/******************************************
+  난이도에 따른 초기 설정
+******************************************/
+const difficultySettings = {
+  "최상": { time: 20, point: 20 },
+  "상":   { time: 30, point: 15 },
+  "중":   { time: 40, point: 13 },
+  "하":   { time: 999999, point: 10 } // 하: 사실상 시간 제한 없음
+};
+
+/******************************************
+  문제 무작위 섞기 (중복없이 전부)
+******************************************/
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i+1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+}
+shuffleArray(allQuestions); // 전체 문제 순서 섞기
+
+/******************************************
+  첫 화면(이름/난이도 입력) 세팅
+******************************************/
+function showStartScreen() {
+  document.getElementById("startScreen").classList.remove("hidden");
+  document.getElementById("quizContainer").classList.add("hidden");
+  document.getElementById("gameOverScreen").classList.add("hidden");
+}
+
+function startGame() {
+  const nameInput = document.getElementById("nameInput");
+  playerName = nameInput.value.trim();
+  if (playerName === "") {
+    alert("이름을 입력해주세요!");
+    return;
+  }
+  const difficultyRadios = document.getElementsByName("difficulty");
+  let chosen = false;
+  for (let i = 0; i < difficultyRadios.length; i++) {
+    if (difficultyRadios[i].checked) {
+      currentDifficulty = difficultyRadios[i].value;
+      chosen = true;
+      break;
+    }
+  }
+  if (!chosen) {
+    alert("난이도를 선택해주세요!");
+    return;
+  }
+
+  // 난이도별 시간/점수 설정
+  timeLeftEach = difficultySettings[currentDifficulty].time;
+  score = 0;
+  totalTime = 0;
+  lives = 3;
+  questionIndex = 0;
+  isGameOver = false;
+
+  document.getElementById("startScreen").classList.add("hidden");
+  document.getElementById("quizContainer").classList.remove("hidden");
+
+  showQuestion();
+  startTimer(); // 전체 게임 시간 카운트(별도)
+}
+
+/******************************************
+  전체 게임 시간 측정용 타이머
+******************************************/
+let totalTimeInterval = setInterval(()=>{
+  if (!isGameOver) {
+    totalTime++;
+    // console.log("전체 경과시간:", totalTime);
+  }
+}, 1000);
+
+/******************************************
+  문제(한 문항) 타이머(에너지바) 세팅
+******************************************/
+let questionTimeInterval = null;
+let timeRemaining = 0;
+
+function startQuestionTimer() {
+  timeRemaining = timeLeftEach;
+  updateEnergyBar();
+  if (currentDifficulty === "하") {
+    // 하 난이도: 시간 무제한 -> 에너지바 Full 고정
+    document.getElementById("energyBar").style.width = "100%";
+    return;
+  }
+  questionTimeInterval = setInterval(()=>{
+    timeRemaining--;
+    updateEnergyBar();
+    if (timeRemaining <= 0) {
+      // 시간 초과 -> 기회 1 감소 후 다음 문제
+      clearInterval(questionTimeInterval);
+      lives--;
+      alert("시간이 모두 지났습니다! 남은 기회: " + lives);
+      if (lives <= 0) {
+        endGame();
+      } else {
+        nextQuestion();
+      }
+    }
+  }, 1000);
+}
+
+function updateEnergyBar() {
+  if (currentDifficulty === "하") {
+    // 하 난이도: 시간 무제한
+    document.getElementById("energyBar").style.width = "100%";
+    return;
+  }
+  const percent = (timeRemaining / timeLeftEach) * 100;
+  document.getElementById("energyBar").style.width = percent + "%";
+}
+
+/******************************************
+  문제 표시
+******************************************/
+function showQuestion() {
+  if (questionIndex >= allQuestions.length) {
+    // 모든 문제를 다 풀었다면 게임 끝
+    endGame();
+    return;
+  }
+  const q = allQuestions[questionIndex];
+  
+  // 문제 내용 채우기
+  document.getElementById("conditionText").innerHTML = q.condition;
+  document.getElementById("questionText").innerHTML = q.question;
+
+  // 보기 렌더링
+  const choicesDiv = document.getElementById("choices");
+  choicesDiv.innerHTML = "";
+  
+  for (let i=0; i<q.numOfChoices; i++){
+    const choiceElem = document.createElement("div");
+    choiceElem.className = "choiceContainer";
+    choiceElem.innerHTML = q.choices[i];
+    choiceElem.onclick = ()=>checkAnswer(i);
+    choicesDiv.appendChild(choiceElem);
+  }
+
+  // 수식 새로 고침
+  MathJax.typeset();
+
+  // 문제 타이머(에너지바) 시작
+  if (questionTimeInterval) clearInterval(questionTimeInterval);
+  startQuestionTimer();
+}
+
+/******************************************
+  정답 체크
+******************************************/
+function checkAnswer(chosenIndex) {
+  if (isGameOver) return; // 이미 끝났으면 무시
+  clearInterval(questionTimeInterval);
+  const q = allQuestions[questionIndex];
+
+  if (chosenIndex === q.correct) {
+    // 정답
+    let point = difficultySettings[currentDifficulty].point;
+    score += point;
+    alert("정답입니다! +" + point + "점");
+  } else {
+    // 오답
+    lives--;
+    alert("틀렸습니다! 정답은 '" + q.choices[q.correct] + "'\n남은 기회: " + lives);
+    if (lives <= 0) {
+      endGame();
+      return;
+    }
+  }
+  // 다음 문제로
+  nextQuestion();
+}
+
+function nextQuestion() {
+  questionIndex++;
+  if (questionIndex >= allQuestions.length) {
+    endGame();
+  } else {
+    showQuestion();
+  }
+}
+
+/******************************************
+  게임 종료
+******************************************/
+function endGame() {
+  isGameOver = true;
+  clearInterval(questionTimeInterval);
+  document.getElementById("quizContainer").classList.add("hidden");
+  document.getElementById("gameOverScreen").classList.remove("hidden");
+
+  // 최종 결과 표시
+  document.getElementById("finalScore").innerText = score + "점";
+  document.getElementById("totalTimeDisplay").innerText = totalTime + "초";
+}
+
+/******************************************
+  점수 전송 버튼
+******************************************/
+function sendScore() {
+  saveData("자연수와 분수의 나눗셈", playerName, score, totalTime);
+}
+</script>
+
+<!-- 시작 화면 -->
+<div id="startScreen" class="centered" style="margin-top:50px;">
+  <h1>자연수와 분수의 나눗셈</h1>
+  <h3>이름을 입력하세요</h3>
+  <input type="text" id="nameInput" style="font-size:1rem; padding:5px; text-align:center;" />
+  <br/>
+  <h3>난이도를 선택하세요</h3>
+  <div>
+    <label><input type="radio" name="difficulty" value="최상" /> 최상(20초/문제, 20점)</label><br/>
+    <label><input type="radio" name="difficulty" value="상" /> 상(30초/문제, 15점)</label><br/>
+    <label><input type="radio" name="difficulty" value="중" /> 중(40초/문제, 13점)</label><br/>
+    <label><input type="radio" name="difficulty" value="하" /> 하(시간 제한 없음, 10점)</label>
+  </div>
+  <br/>
+  <button onclick="startGame()">게임 시작</button>
+</div>
+
+<!-- 문제/퀴즈 진행 화면 -->
+<div id="quizContainer" class="hidden">
+  <div id="energyBarContainer">
+    <div id="energyBar"></div>
+  </div>
+  <div style="text-align:center;">
+    <div><b>남은 기회:</b> <span id="livesDisplay" style="color:red;">3</span></div>
+    <div><b>현재 점수:</b> <span id="scoreDisplay">0</span></div>
+  </div>
+
+  <hr/>
+
+  <div id="conditionText" style="font-weight:bold; min-height:40px;"></div>
+  <div id="questionText" style="margin:10px 0;"></div>
+  <div id="choices"></div>
+</div>
+
+<!-- 게임 종료 화면 -->
+<div id="gameOverScreen" class="hidden centered" style="margin-top:50px;">
+  <h2>게임이 종료되었습니다!</h2>
+  <p>최종 점수: <span id="finalScore"></span></p>
+  <p>전체 소요 시간: <span id="totalTimeDisplay"></span></p>
+  <button onclick="sendScore()">점수 전송</button>
+  <div id="response"></div>
+  <button onclick="showStartScreen()">처음으로</button>
+</div>
+
+<script>
+/* 
+  남은 기회/점수 표시를 실시간 업데이트하기 위한 작은 루프 
+  (UI 갱신 전용)
+*/
+setInterval(()=>{
+  if(!isGameOver){
+    document.getElementById("livesDisplay").innerText = lives;
+    document.getElementById("scoreDisplay").innerText = score;
+  }
+}, 500);
+
+/*
+  MathJax 동적 렌더링 (문제나 보기가 바뀔 때마다 호출)
+  -> 이미 각 문제 표시가 끝난 뒤 showQuestion()에서 MathJax.typeset() 호출
+*/
+</script>
+</body>
+</html>
